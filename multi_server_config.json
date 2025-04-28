@@ -1,0 +1,23 @@
+{
+   "cashfree": {
+        "command": "node",
+        "args": [
+            "<your path to>/cashfree-mcp/src/index.js"
+        ],
+        "env": {
+            "PAYMENTS_APP_ID": "YOUR CF PAYMENTS APP ID",
+            "PAYMENTS_APP_SECRET": "YOUR CF PAYMENTS APP SECRET",
+            "ENV": "production",
+            "TOOLS": "pg"
+        }
+    },
+    "whatsapp": {
+        "command": "<your path to>/.local/bin/uv",
+        "args": [
+            "--directory",
+            "<your path to>/whatsapp-mcp/whatsapp-mcp-server",
+            "run",
+            "main.py"
+        ]
+    }
+}
