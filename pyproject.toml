@@ -1,7 +1,7 @@
 [project]
-name = "new-project"
+name = "whatsapp-cake-order-mcp"
 version = "0.1.0"
-description = "Add your description here"
+description = "A FastAPI application that handles WhatsApp-based cake orders and payment processing using Cashfree Payments using MCP."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
