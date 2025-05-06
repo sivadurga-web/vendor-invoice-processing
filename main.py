@@ -1,4 +1,3 @@
-
 """
 This script implements a FastAPI application for handling WhatsApp-based cake orders
 and payment processing for a homebaker. It integrates with external tools and services
@@ -60,16 +59,19 @@ Global Variables:
 import logging
 import os
 from typing import Dict, Any
-from fastapi import FastAPI, Request, HTTPException
+from fastapi import FastAPI, Request, HTTPException, File, UploadFile
 import uvicorn
 from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langchain_anthropic import ChatAnthropic
 import json
+import base64
+import httpx
 
 from utils import load_config_file, pretty_print_response
 from termcolor import colored
+from fastapi.middleware.cors import CORSMiddleware
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -83,6 +85,15 @@ SERVER_CONFIG = load_config_file("multi_server_config.json")
 
 # FastAPI app
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8081"],  # Replace with your frontend's origin
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Global variables to store agent, client, and ngrok tunnel
 agent = None
@@ -197,7 +208,17 @@ async def startup_event():
         client = MultiServerMCPClient(SERVER_CONFIG)
         await client.__aenter__()  # Enter the async context
         agent = create_react_agent(model, client.get_tools())
+        logger.info("MCP_tools ", client.get_tools())
         logger.info("Agent initialized successfully.")
+        response = await agent.ainvoke({
+            "messages": [{
+                "role": "user",
+                "content": "hi"
+            }]
+        })
+        logger.info(f"Response from agent: {response}")
+        
+
     except Exception as e:
         logger.error(f"Startup error: {str(e)}")
         raise
@@ -212,6 +233,76 @@ async def shutdown_event():
             logger.info("Client shutdown successfully.")
     except Exception as e:
         logger.error(f"Shutdown error: {str(e)}")
+
+
+@app.post("/api/process_invoice")
+async def process_invoice(request: Request, document: UploadFile = File(None)):
+    """Process invoice data sent from the frontend using Claude client."""
+    try:
+        logger.info("Starting process_invoice endpoint...")
+
+        # Parse the text from the request
+        form_data = await request.form()
+        text = form_data.get("text", "")
+        logger.info(f"Extracted text from request: {text}")
+
+        if not text and not document:
+            logger.warning("No text or file provided in the request.")
+            return {"error": "Missing text or file"}
+
+        if document:
+            logger.info(f"Received file: {document.filename}")
+            file_content = await document.read()
+            logger.info(f"File content size: {len(file_content)} bytes")
+
+        # Prepare the initial Claude agent prompt
+        initial_prompt = (
+            "You are an intelligent assistant specialized in analyzing invoices and processing transfers. "
+            "Your task is to process the provided text and/or document to extract meaningful insights and assist with transfer operations. "
+            "If a document is provided, analyze its content and summarize key details such as invoice number, date, amount, vendor, and bank details. "
+            "If only text is provided, analyze and respond appropriately. "
+            "If the user requests a transfer, intiate the transfer the following details with the user before proceeding: "
+            "Once confirmed, provide a response with all transfer details, including the transfer ID, amount, beneficiary details, and current status. "
+            "Always provide clear and concise responses."
+        )
+        logger.debug(f"Initial prompt for Claude agent: {initial_prompt}")
+
+        # Prepare the input data for the Claude agent
+        input_data = [{"role": "system", "content": initial_prompt}]
+        content = []
+        if text:
+            content.append({"type": "text", "text": text})
+            logger.info("Text content added to input data for Claude agent.")
+        if document:
+            pdf_data = base64.standard_b64encode(file_content).decode("utf-8")
+            content.append({
+                "type": "document",
+                "source": {
+                    "type": "base64",
+                    "media_type": "application/pdf",
+                    "data": pdf_data,
+                }
+            })
+            logger.info("File content encoded to base64 for Claude agent.")
+
+        input_data.append({"role": "user", "content": content})
+
+        # Call the Claude agent
+        logger.info("Calling Claude agent...")
+        response = await agent.ainvoke({"messages": input_data})
+
+        # Extract and log the Claude agent's response
+        pretty_print_response(response, "Process Invoice")
+        response_text = response["messages"][-1].content
+        logger.info(f"Claude agent response: {response_text}")
+
+        # Return the response from the Claude agent
+        return {"message": response_text}
+
+    except Exception as e:
+        logger.error(f"Error in process_invoice: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 @app.post("/api/process_message")
 async def process_message(request: Request):
@@ -248,4 +339,6 @@ async def webhook(request: Request):
         raise HTTPException(status_code=500, detail="Internal server error")
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Run the Uvicorn server without TLS
+    logger.info("Starting Uvicorn server without TLS...")
+    uvicorn.run(app, host="0.0.0.0", port=8000, ssl_certfile=None, ssl_keyfile=None)
