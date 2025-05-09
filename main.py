@@ -174,7 +174,7 @@ async def process_invoice(request: Request, document: UploadFile = File(None)):
             "If a document is provided, analyze its content and summarize key details such as invoice number, date, amount, vendor, and bank details"
             "The beneficiary id is not required, pass the beneficiary details correctly. "
             "If only text is provided, analyze and respond appropriately. Do not use search tool for this task. "
-            "If the user requests a transfer, intiate the transfer the following details with the user before proceeding: "
+            "If the user requests a transfer, intiate the transfer"
             "Once confirmed, provide a response with all transfer details, including the transfer ID, amount, beneficiary details, and current status. "
             "Always provide clear and concise responses, clearly formatted in plain text, not markdown."
         )
