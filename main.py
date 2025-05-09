@@ -65,6 +65,7 @@ from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.prebuilt import create_react_agent
 from langchain_anthropic import ChatAnthropic
+from langchain_openai import ChatOpenAI
 import json
 import base64
 import httpx
@@ -74,7 +75,7 @@ from termcolor import colored
 from fastapi.middleware.cors import CORSMiddleware
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Load environment variables
@@ -86,117 +87,20 @@ SERVER_CONFIG = load_config_file("multi_server_config.json")
 # FastAPI app
 app = FastAPI()
 
-# Add CORS middleware
+# set no CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8081"],  # Replace with your frontend's origin
+    allow_origins=["*"],  # Allow all origins
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"],  # Allow all HTTP methods
+    allow_headers=["*"],  # Allow all headers
 )
-
 # Global variables to store agent, client, and ngrok tunnel
 agent = None
 client = None
 
-async def handle_cake_order_lead(phone_number: str, name: str, message: str) -> Dict[str, str]:
-    """Handle a cake order: identify intent, send cake options via WhatsApp."""
-    order_prompt = (
-        f"You are an intelligent assistant for a homebaker, delighting customers with friendly responses. Process a customer message to identify a cake order intent and send flavor options.\n"
-        f"Inputs:\n"
-        f"- Phone number: '{phone_number}'\n"
-        f"- Name: '{name}'\n"
-        f"- Message: '{message}'\n"
-        "Follow these steps exactly, using appropriate spacing and emojis:\n"
-        "1. Identify cake order intent:\n"
-        "   - A cake order intent is defined as a message containing any of the keywords (case-insensitive): 'cake', 'order', 'buy', 'purchase', 'want'.\n"
-        "   - If no intent is identified, return: {'status': 'Message ignored'}\n"
-        "2. Offer 3 cake options for different prices chocolate 500, vanilla 300, butterscotch 700:\n"
-        "   - A confirmed flavor from the customer is a happy path. Customer needs to confirm one of the flavors. Wait for customer to confirm the flavor.\n"
-        "   - If no confirmation is identified, ask the customer to choose a correct option.\n"
-        "5. Evaluate the outcome:\n"
-        "   - If the flavors options are sent successfully, return: {'status': 'Order processed, payment link sent'}\n"
-        "   - If any tool fails (e.g., message sending failure), return: {'status': 'ERROR: Order processing failed'}\n"
-        "Return the output as a JSON object with a 'status' field."
-    )
-    response = await agent.ainvoke({
-        "messages": [{
-            "role": "user",
-            "content": order_prompt
-        }]
-    })
-    pretty_print_response(response, "Handle Cake Order Lead")
-    response_text = response["messages"][-1].content.lower()
-
-    if "message ignored" in response_text:
-        return {"status": "Message ignored"}
-    elif "error" in response_text:
-        return {"status": response_text.split("error:")[1].strip() if "error:" in response_text else "ERROR: Unknown error"}
-    return {"status": "Order identified, flavor options sent"}
-
-async def handle_confirm_order(phone_number: str, name: str, message: str) -> Dict[str, str]:
-    """Handle a order with flavor present and send payment link against the selected order."""
-    order_prompt = (
-        f"You are an intelligent assistant for a homebaker, delighting customers with friendly responses. Process a customer message to identify a cake flavor in the message and generate a payment link.\n"
-        f"Inputs:\n"
-        f"- Phone number: '{phone_number}'\n"
-        f"- Name: '{name}'\n"
-        f"- Message: '{message}'\n"
-        "Follow these steps exactly, using appropriate spacing and emojis:\n"
-        "1. Identify cake order flavor:\n"
-        "   - A cake order intent is defined as a message containing any of the keywords (case-insensitive): 'chocolate', 'vanilla', 'butterscotch'.\n"
-        "   - If no flavor is identified, return: {'status': 'Message ignored'}\n"
-        "2. Generate a payment link:\n"
-        f"   - Generate a payment link for the identified cake order with Cashfree MCP. Reason with yourself in case of any errors while creating the link. \n"
-        "3. Send the payment link:\n"
-        f"   - use whatsapp mcp tool to send a WhatsApp message to '{phone_number}' sharing the payment link url. Add new lines & keep it professional yet cheerful. Dont try to use hyperlink - directly plug in the payment link url. Use emojis conservatively.\n"
-        "4. Evaluate the outcome:\n"
-        "   - If the payment link is generated and the message is sent successfully, return: {'status': 'Order processed, payment link sent'}\n"
-        "   - If any tool fails (e.g., payment link generation or message sending failure), return: {'status': 'ERROR: Order processing failed'}\n"
-        "Return the output as a JSON object with a 'status' field."
-    )
-    response = await agent.ainvoke({
-        "messages": [{
-            "role": "user",
-            "content": order_prompt
-        }]
-    })
-    pretty_print_response(response, "Handle Cake Order Lead")
-    response_text = response["messages"][-1].content.lower()
-
-    if "message ignored" in response_text:
-        return {"status": "Message ignored"}
-    elif "error" in response_text:
-        return {"status": response_text.split("error:")[1].strip() if "error:" in response_text else "ERROR: Unknown error"}
-    return {"status": "Order identified, flavor options sent"}
-
-
-async def handle_webhook(payload: str) -> Dict[str, str]:
-    """Handle a payload passed and message confirmation to the user on successful payment."""
-    order_prompt = (
-        f"You are an intelligent assistant for a homebaker, delighting customers with friendly responses. Process a customer message to identify a cake order intent and generate a payment link.\n"
-        f"Inputs:\n"
-        f"- Payload'{payload}'\n"
-        "Follow these steps exactly, using appropriate spacing and emojis:\n"
-        "1. Identify the customer phone and the status of the payment in the webhook and send the confirmation to the customer via whatsapp\n"
-        "Return the output as a JSON object with a 'status' field."
-    )
-    response = await agent.ainvoke({
-        "messages": [{
-            "role": "user",
-            "content": order_prompt
-        }]
-    })
-
-    pretty_print_response(response, "Handle Cake Order")
-    response_text = response["messages"][-1].content.lower()
-
-    if "message ignored" in response_text:
-        return {"status": "Message ignored"}
-    elif "error" in response_text:
-        return {"status": response_text.split("error:")[1].strip() if "error:" in response_text else "ERROR: Unknown error"}
-    return {"status": "Order processed, payment link sent"}
-
+# Global variable to store conversation history
+conversation_history = {}
 
 @app.on_event("startup")
 async def startup_event():
@@ -204,7 +108,7 @@ async def startup_event():
     global agent, client, ngrok_tunnel
     try:
         # Initialize MCP client and agent
-        model = ChatAnthropic(model="claude-3-5-haiku-20241022", temperature=0.7)
+        model = ChatAnthropic(model="claude-3-7-sonnet-20250219", temperature=0.6)
         client = MultiServerMCPClient(SERVER_CONFIG)
         await client.__aenter__()  # Enter the async context
         agent = create_react_agent(model, client.get_tools())
@@ -235,6 +139,7 @@ async def shutdown_event():
         logger.error(f"Shutdown error: {str(e)}")
 
 
+prevmessages = ""
 @app.post("/api/process_invoice")
 async def process_invoice(request: Request, document: UploadFile = File(None)):
     """Process invoice data sent from the frontend using Claude client."""
@@ -244,6 +149,7 @@ async def process_invoice(request: Request, document: UploadFile = File(None)):
         # Parse the text from the request
         form_data = await request.form()
         text = form_data.get("text", "")
+        user_id = form_data.get("user_id", "default_user")  # Use a unique identifier for the user
         logger.info(f"Extracted text from request: {text}")
 
         if not text and not document:
@@ -255,22 +161,30 @@ async def process_invoice(request: Request, document: UploadFile = File(None)):
             file_content = await document.read()
             logger.info(f"File content size: {len(file_content)} bytes")
 
+        # Initialize or update conversation history for the user
+        if user_id not in conversation_history:
+            conversation_history[user_id] = []
+        if text.strip():  # Ensure text is not empty
+            conversation_history[user_id].append({"role": "user", "content": text})
+
         # Prepare the initial Claude agent prompt
         initial_prompt = (
             "You are an intelligent assistant specialized in analyzing invoices and processing transfers. "
             "Your task is to process the provided text and/or document to extract meaningful insights and assist with transfer operations. "
-            "If a document is provided, analyze its content and summarize key details such as invoice number, date, amount, vendor, and bank details. "
-            "If only text is provided, analyze and respond appropriately. "
+            "If a document is provided, analyze its content and summarize key details such as invoice number, date, amount, vendor, and bank details"
+            "The beneficiary id is not required, pass the beneficiary details correctly. "
+            "If only text is provided, analyze and respond appropriately. Do not use search tool for this task. "
             "If the user requests a transfer, intiate the transfer the following details with the user before proceeding: "
             "Once confirmed, provide a response with all transfer details, including the transfer ID, amount, beneficiary details, and current status. "
-            "Always provide clear and concise responses."
+            "Always provide clear and concise responses, clearly formatted in plain text."
         )
         logger.debug(f"Initial prompt for Claude agent: {initial_prompt}")
 
         # Prepare the input data for the Claude agent
         input_data = [{"role": "system", "content": initial_prompt}]
+        input_data.extend(conversation_history[user_id])  # Add conversation history
         content = []
-        if text:
+        if text.strip():  # Ensure text is not empty
             content.append({"type": "text", "text": text})
             logger.info("Text content added to input data for Claude agent.")
         if document:
@@ -285,7 +199,11 @@ async def process_invoice(request: Request, document: UploadFile = File(None)):
             })
             logger.info("File content encoded to base64 for Claude agent.")
 
-        input_data.append({"role": "user", "content": content})
+        if content:  # Ensure content is not empty
+            input_data.append({"role": "user", "content": content})
+        else:
+            logger.warning("No valid content to send to Claude agent.")
+            return {"error": "No valid content to process."}
 
         # Call the Claude agent
         logger.info("Calling Claude agent...")
@@ -296,47 +214,15 @@ async def process_invoice(request: Request, document: UploadFile = File(None)):
         response_text = response["messages"][-1].content
         logger.info(f"Claude agent response: {response_text}")
 
+        # Add the agent's response to the conversation history
+        conversation_history[user_id].append({"role": "assistant", "content": response_text})
+
         # Return the response from the Claude agent
         return {"message": response_text}
-
     except Exception as e:
         logger.error(f"Error in process_invoice: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
-
-@app.post("/api/process_message")
-async def process_message(request: Request):
-    """Process incoming WhatsApp messages for cake orders."""
-    data = await request.json()
-    phone_number = data.get("phone_number")
-    message = data.get("message")
-    name = data.get("name")
-
-    if not phone_number or not message or not name:
-        return {"error": "Missing phone_number, message, or name"}
-
-    if "chocolate" in message.lower() or "vanilla" in message.lower() or "butterscotch" in message.lower():
-        return await handle_confirm_order(phone_number, name, message)
-    else:
-        return await handle_cake_order_lead(phone_number, name, message)
-
-@app.post("/api/webhook")
-async def webhook(request: Request):
-    """Handle incoming webhook requests from Cashfree Payments."""
-    try:
-        # Get raw payload and signature
-        payload = await request.body()
-        # Parse payload
-        webhook_data = json.loads(payload.decode('utf-8'))
-        logger.info(f"Received webhook: {json.dumps(webhook_data, indent=2)}")
-
-        return await handle_webhook(webhook_data)
-    except json.JSONDecodeError:
-        logger.error("Invalid webhook payload format")
-        raise HTTPException(status_code=400, detail="Invalid payload")
-    except Exception as e:
-        logger.error(f"Webhook processing error: {str(e)}")
-        raise HTTPException(status_code=500, detail="Internal server error")
 
 if __name__ == "__main__":
     # Run the Uvicorn server without TLS
