@@ -110,7 +110,6 @@ The application uses:
 
 The `.env` file should include:
 - `ANTHROPIC_API_KEY`: API key for Claude 3 Haiku.
-- `OPENAI_API_KEY`: API key for OpenAI services.
 
 ## License
 
