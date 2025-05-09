@@ -12,8 +12,6 @@ A FastAPI-based application that integrates with WhatsApp and Cashfree MCP servi
 
 - Python 3.11+
 - `.env` file with required environment variables
-- Access to MCP services (WhatsApp and Cashfree)
-- Supabase project setup
 - Docker installed on your system
 
 ## Configuration
