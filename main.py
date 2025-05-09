@@ -176,7 +176,7 @@ async def process_invoice(request: Request, document: UploadFile = File(None)):
             "If only text is provided, analyze and respond appropriately. Do not use search tool for this task. "
             "If the user requests a transfer, intiate the transfer the following details with the user before proceeding: "
             "Once confirmed, provide a response with all transfer details, including the transfer ID, amount, beneficiary details, and current status. "
-            "Always provide clear and concise responses, clearly formatted in plain text."
+            "Always provide clear and concise responses, clearly formatted in plain text, not markdown."
         )
         logger.debug(f"Initial prompt for Claude agent: {initial_prompt}")
 
