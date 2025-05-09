@@ -15,5 +15,6 @@ dependencies = [
     "langchain-openai>=0.3.14",
     "langgraph>=0.3.34",
     "langgraph-prebuilt>=0.1.8",
+    "python-multipart>=0.0.20",
     "termcolor>=3.0.1",
 ]
