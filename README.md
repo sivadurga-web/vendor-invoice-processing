@@ -4,10 +4,7 @@ A FastAPI-based application that integrates with WhatsApp and Cashfree MCP servi
 
 ## Features
 
-- 📜 Process vendor invoice inquiries via WhatsApp
-- 💬 Automated responses for invoice-related queries
-- 💰 Generate payment links for vendor invoices
-- ✅ Handle payment confirmation webhooks
+- 💬 Automated responses for invoice-related queries and do invoice transfer
 - 🤖 AI-powered message processing using Claude 3 Haiku
 - 🔐 Secure integration with Cashfree MCP services
 
